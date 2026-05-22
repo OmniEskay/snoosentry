@@ -1,68 +1,49 @@
-import { Hono } from 'hono';
-import type { MenuItemRequest, UiResponse } from '@devvit/web/shared';
-import type { FormField } from '@devvit/shared-types/shared/form.js';
+import { Devvit } from "@devvit/public-api";
+import { getSignalFromAPI } from "./api.js";
+import { SignalForm } from "./forms.js";
 
-export const menu = new Hono();
+export function registerMenuItems(): void {
+  Devvit.addMenuItem({
+    label: "🚦 Check Signal",
+    location: "post",
+    forUserType: "moderator",
 
-const buildNukeFields = (targetId: string): FormField[] => [
-  {
-    name: 'targetId',
-    label: 'Target ID',
-    type: 'string',
-    helpText: 'Auto-filled from the selected item.',
-    required: true,
-    defaultValue: targetId,
-  },
-  {
-    name: 'remove',
-    label: 'Remove comments',
-    type: 'boolean',
-    defaultValue: true,
-  },
-  {
-    name: 'lock',
-    label: 'Lock comments',
-    type: 'boolean',
-    defaultValue: false,
-  },
-  {
-    name: 'skipDistinguished',
-    label: 'Skip distinguished comments',
-    type: 'boolean',
-    defaultValue: false,
-  },
-];
+    onPress: async (event, context) => {
+      const post = await context.reddit.getPostById(event.targetId);
+      const username = post.authorName ?? "unknown";
 
-const buildNukeForm = (title: string, targetId: string) => ({
-  fields: buildNukeFields(targetId),
-  title,
-  acceptLabel: 'Mop',
-  cancelLabel: 'Cancel',
-});
+      context.ui.showToast(`Fetching signal for u/${username}…`);
 
-menu.post('/mop-comment', async (c) => {
-  const request = await c.req.json<MenuItemRequest>();
-  console.log('request', request.targetId);
-  return c.json<UiResponse>(
-    {
-      showForm: {
-        name: 'mopComment',
-        form: buildNukeForm('Mop Comments', request.targetId),
-      },
+      try {
+        const signal = await getSignalFromAPI(username);
+        // Ensure the signal is a plain JSON value for the form
+        context.ui.showForm(SignalForm, { signal: JSON.parse(JSON.stringify(signal)) });
+      } catch (err) {
+        console.error("[snoosentry] menu post error", err);
+        context.ui.showToast("⚠️  Could not fetch signal — check API connection.");
+      }
     },
-    200
-  );
-});
+  });
 
-menu.post('/mop-post', async (c) => {
-  const request = await c.req.json<MenuItemRequest>();
-  return c.json<UiResponse>(
-    {
-      showForm: {
-        name: 'mopPost',
-        form: buildNukeForm('Mop Post Comments', request.targetId),
-      },
+  Devvit.addMenuItem({
+    label: "🚦 Check Signal",
+    location: "comment",
+    forUserType: "moderator",
+
+    onPress: async (event, context) => {
+      const comment = await context.reddit.getCommentById(event.targetId);
+      const username = comment.authorName ?? "unknown";
+
+      context.ui.showToast(`Fetching signal for u/${username}…`);
+
+      try {
+        const signal = await getSignalFromAPI(username);
+        // Ensure the signal is a plain JSON value for the form
+        context.ui.showForm(SignalForm, { signal: JSON.parse(JSON.stringify(signal)) });
+      } catch (err) {
+        console.error("[snoosentry] menu comment error", err);
+        context.ui.showToast("⚠️  Could not fetch signal — check API connection.");
+      }
     },
-    200
-  );
-});
+  });
+}
